@@ -254,10 +254,10 @@ def render_flashcard():
         st.progress(score / 100)
 
         # Caja de feedback con color según resultado
-        if correct and score >= 80:
+        if correct and score >= 90:
             css_class = "feedback-correct"
             icon = "✅"
-        elif correct:
+        elif correct or score >= 50:
             css_class = "feedback-partial"
             icon = "🟡"
         else:

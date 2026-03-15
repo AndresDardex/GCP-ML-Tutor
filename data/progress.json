@@ -19,5 +19,68 @@
     "last_score": 80,
     "best_score": 80,
     "last_seen": "2026-03-14T18:03:28.589435"
+  },
+  "Pérdida logística": {
+    "attempts": 1,
+    "correct": 1,
+    "last_score": 90,
+    "best_score": 90,
+    "last_seen": "2026-03-15T13:02:34.806745"
+  },
+  "Flaxformer": {
+    "attempts": 1,
+    "correct": 1,
+    "last_score": 80,
+    "best_score": 80,
+    "last_seen": "2026-03-15T13:05:10.335200"
+  },
+  "BoolQ": {
+    "attempts": 1,
+    "correct": 0,
+    "last_score": 40,
+    "best_score": 40,
+    "last_seen": "2026-03-15T13:06:17.995220"
+  },
+  "datos numéricos": {
+    "attempts": 1,
+    "correct": 1,
+    "last_score": 80,
+    "best_score": 80,
+    "last_seen": "2026-03-15T13:08:59.956573"
+  },
+  "nodo (red neuronal)": {
+    "attempts": 1,
+    "correct": 1,
+    "last_score": 80,
+    "best_score": 80,
+    "last_seen": "2026-03-15T13:10:22.881412"
+  },
+  "math-pass@k": {
+    "attempts": 1,
+    "correct": 0,
+    "last_score": 0,
+    "best_score": 0,
+    "last_seen": "2026-03-15T13:12:03.791027"
+  },
+  "descenso de gradientes": {
+    "attempts": 1,
+    "correct": 1,
+    "last_score": 80,
+    "best_score": 80,
+    "last_seen": "2026-03-15T13:14:48.831058"
+  },
+  "Intersección sobre unión (IoU)": {
+    "attempts": 1,
+    "correct": 1,
+    "last_score": 80,
+    "best_score": 80,
+    "last_seen": "2026-03-15T13:18:07.318654"
+  },
+  "capa de calibración": {
+    "attempts": 1,
+    "correct": 1,
+    "last_score": 80,
+    "best_score": 80,
+    "last_seen": "2026-03-15T13:21:30.565821"
   }
 }
