@@ -1,0 +1,23 @@
+{
+  "static": {
+    "attempts": 1,
+    "correct": 1,
+    "last_score": 85,
+    "best_score": 85,
+    "last_seen": "2026-03-14T17:50:01.424238"
+  },
+  "extremos": {
+    "attempts": 2,
+    "correct": 0,
+    "last_score": 80,
+    "best_score": 80,
+    "last_seen": "2026-03-14T18:06:07.871322"
+  },
+  "verdadero negativo (VN)": {
+    "attempts": 1,
+    "correct": 1,
+    "last_score": 80,
+    "best_score": 80,
+    "last_seen": "2026-03-14T18:03:28.589435"
+  }
+}
