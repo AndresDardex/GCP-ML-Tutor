@@ -1,466 +1,295 @@
-# 🤖 MentorML — Tutor Académico de Machine Learning
+# ML-Tutor
 
-> **Sistema de IA local basado en RAG (Retrieval-Augmented Generation) para aprender y practicar conceptos de Machine Learning de manera interactiva.**
-
----
-
-## 📋 Tabla de Contenidos
-
-- [Descripción General](#-descripción-general)
-- [Características](#-características)
-- [Arquitectura del Sistema](#-arquitectura-del-sistema)
-- [Diseño de Prompts (Avance 1)](#-diseño-de-prompts-avance-1)
-- [Estructura del Proyecto](#-estructura-del-proyecto)
-- [Requisitos Previos](#-requisitos-previos)
-- [Instalación Paso a Paso](#-instalación-paso-a-paso)
-- [Uso de la Aplicación](#-uso-de-la-aplicación)
-- [Cómo Funciona el RAG](#-cómo-funciona-el-rag)
-- [Stack Tecnológico](#-stack-tecnológico)
-- [Privacidad y Ejecución Local](#-privacidad-y-ejecución-local)
+Sistema de tutoría inteligente para Machine Learning basado en RAG (Retrieval-Augmented Generation). Usa el **Glosario Oficial de ML de Google** (697 términos en español) como base de conocimiento para generar respuestas fundamentadas, evaluar al estudiante mediante flashcards y detectar preguntas fuera del dominio.
 
 ---
 
-## 📖 Descripción General
+## Tabla de contenidos
 
-**MentorML** es un asistente tutor académico especializado en Machine Learning que opera **completamente de forma local**, sin enviar ningún dato a servicios externos. Usa el [Glosario oficial de ML de Google](https://developers.google.com/machine-learning/glossary?hl=es-419) como base de conocimientos y un modelo de lenguaje local (Ollama + llama3.2) para:
-
-- **Evaluar** definiciones que escribe el estudiante y dar feedback inteligente y personalizado
-- **Responder** preguntas libres sobre cualquier concepto de ML usando el glosario como fuente
-- **Registrar** el progreso del estudiante y priorizar términos débiles para repasar
-
-Este proyecto implementa las técnicas de **Prompt Engineering** del Avance 1:
-- System Prompts estructurados con XML tags
-- Few-Shot Prompting con ejemplos guía
-- Formato de salida JSON estricto
-- RAG para inyección de contexto relevante
+1. [Descripción](#descripción)
+2. [Arquitectura del sistema](#arquitectura-del-sistema)
+3. [Proceso de ingesta y vectorización](#proceso-de-ingesta-y-vectorización)
+4. [Construcción del prompt aumentado](#construcción-del-prompt-aumentado)
+5. [Pipeline RAG completo](#pipeline-rag-completo)
+6. [Interfaz gráfica](#interfaz-gráfica)
+7. [Instalación y uso](#instalación-y-uso)
+8. [Evaluación RAGAS](#evaluación-ragas)
+9. [Estructura del repositorio](#estructura-del-repositorio)
 
 ---
 
-## ✨ Características
+## Descripción
 
-| Funcionalidad | Descripción |
-|---|---|
-| 🃏 **Flashcards Inteligentes** | Practica términos de ML con evaluación automática por IA (puntuación 0–100) |
-| 💬 **Chat Libre** | Pregunta cualquier concepto y recibe explicaciones basadas en el glosario |
-| 📊 **Seguimiento de Progreso** | Visualiza términos dominados, en repaso y estadísticas generales |
-| 🔁 **Spaced Repetition** | El sistema prioriza automáticamente los términos donde tienes más dificultad |
-| 🔒 **100% Local** | Ningún dato sale de tu máquina. El LLM y los embeddings corren localmente |
-| 📚 **697 Términos** | Cubre todo el glosario oficial de ML de Google en español |
+**ML-Tutor** es un tutor adaptativo que:
+
+- Responde preguntas sobre ML citando únicamente el glosario oficial de Google
+- Evalúa definiciones escritas por el estudiante con puntuación 0–100
+- Aplica selección inteligente de términos (spaced repetition probabilístico)
+- Detecta y rechaza preguntas fuera del dominio sin alucinar
+- Funciona **100 % local** — sin enviar datos a servicios externos
+
+**Stack:** Python · LangChain · ChromaDB · Ollama (`llama3.2`) · Streamlit · sentence-transformers · RAGAS
 
 ---
 
-## 🏗 Arquitectura del Sistema
+## Arquitectura del sistema
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                         USUARIO (Navegador)                         │
-│                      http://localhost:8501                          │
-└─────────────────────────┬───────────────────────────────────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                    app.py  (Streamlit UI)                           │
-│                                                                     │
-│   ┌──────────────┐  ┌──────────────┐  ┌────────────────────────┐  │
-│   │  Flashcards  │  │  Chat Libre  │  │     Mi Progreso        │  │
-│   └──────┬───────┘  └──────┬───────┘  └───────────┬────────────┘  │
-└──────────┼────────────────┼───────────────────────┼───────────────┘
-           │                │                       │
-           ▼                ▼                       ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                    rag/chain.py  (MLTutorChain)                     │
-│                                                                     │
-│  1. retrieve_context(query)  →  ChromaDB (búsqueda semántica)      │
-│  2. Construir prompt          →  System Prompt + Few-Shot + RAG     │
-│  3. llm.invoke(prompt)        →  Ollama / llama3.2                 │
-│  4. _parse_json_response()    →  Retorna dict estructurado          │
-└──────────┬──────────────────────────────────┬───────────────────────┘
-           │                                  │
-           ▼                                  ▼
-┌──────────────────────┐          ┌───────────────────────────────────┐
-│  data/chroma_db/     │          │  Ollama  (llama3.2 local)         │
-│  (Vector Store)      │          │  Puerto: 11434                    │
-│                      │          │  Temperatura: 0.3                 │
-│  Embeddings:         │          │  100% privado, sin internet       │
-│  paraphrase-         │          └───────────────────────────────────┘
-│  multilingual-       │
-│  MiniLM-L12-v2       │
-│  697 documentos      │
-└──────────────────────┘
-```
+FASE DE INGESTA (offline)
+─────────────────────────────────────────────────────────────────
+Google ML Glossary --> scraper.py --> glossary.json (697 docs)
+                                             |
+                                        setup_db.py
+                                             |
+                           paraphrase-multilingual-MiniLM-L12-v2
+                                             |
+                                      ChromaDB (coseno)
 
-### Flujo de datos completo
-
-```
-scraper.py          setup_db.py              app.py (runtime)
-    │                    │                        │
-    ▼                    ▼                        ▼
-Google ML  ──→  glossary.json  ──→  chroma_db  ──→  MLTutorChain
-Glossary                              (embeddings)   │
-(HTML)                                               ▼
-                                              Ollama LLM
-                                                     │
-                                                     ▼
-                                              JSON Response
-                                              {puntuacion, feedback...}
+FASE DE CONSULTA (online)
+─────────────────────────────────────────────────────────────────
+Usuario --> Streamlit GUI
+                |
+         consulta (texto)
+                |
+      embedding de la consulta
+                |
+      ChromaDB.query(k=3)  <-- similitud coseno
+                |
+      contexto (top-3 chunks)
+                |
+      SYSTEM PROMPT + contexto + consulta
+                |
+      llama3.2 (Ollama, temperature=0.3)
+                |
+      Respuesta fundamentada --> GUI
 ```
 
 ---
 
-## 🎯 Diseño de Prompts (Avance 1)
+## Proceso de ingesta y vectorización
 
-Este proyecto implementa las tres técnicas de Prompt Engineering requeridas:
+### 1. Scraping del glosario (`scraper.py`)
 
-### 1. System Prompts con XML Tags
+- **Fuente:** `https://developers.google.com/machine-learning/glossary?hl=es-419`
+- **Parser:** BeautifulSoup4 — selector `h2.hide-from-toc` para términos, `span.glossary-icon` para categorías
+- **Resultado:** `data/glossary.json` — 697 objetos `{term, definition, category}`
 
-Los prompts usan **XML tags como delimitadores** para separar claramente cada sección:
+### 2. Vectorización (`setup_db.py`)
 
-```xml
+Cada término se convierte en un documento con el formato:
+
+```
+Término: {term}
+Definición: {definition}
+```
+
+**Sin chunking tradicional** — cada término es un documento completo. Esto evita fragmentar definiciones y es apropiado para el tamaño compacto de cada entrada del glosario.
+
+### 3. Modelo de embeddings
+
+| Parámetro | Valor |
+|-----------|-------|
+| Modelo | `paraphrase-multilingual-MiniLM-L12-v2` |
+| Proveedor | sentence-transformers (HuggingFace) |
+| Dimensiones | 384 |
+| Idiomas | Multilingüe (optimizado para español) |
+| Peso | ~120 MB — 100% local |
+
+### 4. Base de datos vectorial
+
+| Parámetro | Valor |
+|-----------|-------|
+| Motor | ChromaDB PersistentClient |
+| Ruta | `data/chroma_db/` |
+| Colección | `ml_glossary` |
+| Métrica | Coseno (`hnsw:space: cosine`) |
+| Documentos | 697 |
+| Lote de inserción | 50 términos |
+
+---
+
+## Construcción del prompt aumentado
+
+El pipeline inyecta el contexto recuperado en el system prompt con **etiquetas XML**:
+
+```
 <rol>
-Eres MentorML, un tutor experto en Machine Learning...
+Eres ML-Tutor, un asistente experto en Machine Learning...
 </rol>
 
 <reglas>
-- Evalúa la respuesta del estudiante comparándola con la definición oficial
-- Sé justo: reconoce las partes correctas antes de señalar las incorrectas
-- SIEMPRE responde en formato JSON válido
+1. Responde UNICAMENTE con información del glosario proporcionado.
+2. Si el contexto no contiene la respuesta, di:
+   "No encuentro esa información en el glosario de ML de Google."
+3. Cita el término fuente al final de cada respuesta.
 </reglas>
 
 <contexto_glosario>
-{context}        ← Aquí se inyectan los términos relevantes del glosario (RAG)
+{top-3 chunks recuperados por similitud coseno}
 </contexto_glosario>
+
+{pregunta del usuario}
 ```
 
-### 2. Few-Shot Prompting
-
-Se incluyen **3 ejemplos de evaluación** (respuesta excelente, parcial e incorrecta) para guiar al modelo hacia el formato y tono esperados:
-
-```xml
-<ejemplos_de_evaluacion>
-  <ejemplo_1>
-    <término>Overfitting</término>
-    <respuesta_estudiante>cuando el modelo aprende demasiado...</respuesta_estudiante>
-    <evaluacion_esperada>
-    {
-      "puntuacion": 75,
-      "correcto": true,
-      "feedback": "¡Bien! Captaste la idea principal...",
-      "conceptos_clave_faltantes": ["generalización", "ruido"]
-    }
-    </evaluacion_esperada>
-  </ejemplo_1>
-  ...
-</ejemplos_de_evaluacion>
-```
-
-### 3. Formato de Salida Estructurado (JSON)
-
-El prompt especifica el esquema JSON exacto que debe retornar el modelo:
-
-```json
-{
-  "puntuacion": 85,
-  "correcto": true,
-  "feedback": "Explicación motivadora de 2-3 oraciones...",
-  "conceptos_clave_faltantes": ["concepto1", "concepto2"]
-}
-```
+El modo flashcard añade además **3 ejemplos few-shot** que guían al modelo a producir JSON con campos `puntuacion`, `correcto`, `feedback` y `conceptos_clave_faltantes`.
 
 ---
 
-## 📁 Estructura del Proyecto
+## Pipeline RAG completo
 
 ```
-ml-tutor/
-│
-├── app.py                      # Interfaz Streamlit (punto de entrada)
-│
-├── scraper.py                  # Descarga el glosario de Google ML
-│
-├── setup_db.py                 # Crea la base de datos vectorial ChromaDB
-│
-├── requirements.txt            # Dependencias Python
-│
-├── prompts/
-│   ├── __init__.py
-│   ├── system_prompts.py       # System prompts con XML tags (AVANCE 1)
-│   └── few_shot.py             # Ejemplos few-shot (AVANCE 1)
-│
-├── rag/
-│   ├── __init__.py
-│   └── chain.py                # Cadena RAG: ChromaDB + Ollama
-│
-├── tutor/
-│   ├── __init__.py
-│   ├── flashcard.py            # Lógica de selección (spaced repetition)
-│   └── progress.py             # Persistencia del progreso del estudiante
-│
-└── data/                       # Generado automáticamente (NO subir a git)
-    ├── glossary.json           # 697 términos scrapeados
-    ├── progress.json           # Historial del estudiante
-    └── chroma_db/              # Base de datos vectorial
+1. Usuario escribe pregunta en Streamlit
+        |
+2. MLTutorChain.retrieve_context(query, k=3)
+   |-- SentenceTransformer genera embedding de la query
+   |-- ChromaDB.query() --> top-3 docs por similitud coseno
+        |
+3. Contexto inyectado en SYSTEM_PROMPT via .format()
+        |
+4. OllamaLLM(model="llama3.2", temperature=0.3).invoke(prompt)
+        |
+5. Respuesta retornada a la GUI
+   |-- Modo chat      --> texto libre
+   |-- Modo flashcard --> JSON parseado --> puntuación + feedback
 ```
+
+**k recuperado:** 3 en modo flashcard · 4 en modo chat libre
 
 ---
 
-## ✅ Requisitos Previos
+## Interfaz gráfica
 
-Antes de instalar el proyecto, asegúrate de tener lo siguiente:
+### Flashcards
+- Selección probabilística del siguiente término (spaced repetition)
+- El estudiante escribe la definición
+- LLM evalúa con score 0–100 y feedback detallado
+- Definición oficial expandible después de cada intento
 
-### 1. Python 3.11+
-
-Verifica tu versión con:
-```bash
-python --version
-```
-Si no lo tienes, descárgalo desde [python.org](https://www.python.org/downloads/).
-
-### 2. Ollama
-
-Ollama es el motor que corre el modelo de lenguaje de forma local.
-
-**Descarga e instala desde:** https://ollama.com
-
-Después de instalarlo, descarga el modelo llama3.2:
-```bash
-ollama pull llama3.2
-```
-
-Verifica que esté corriendo:
-```bash
-ollama list
-```
-Deberías ver `llama3.2` en la lista.
-
-> **Nota:** Ollama corre automáticamente en background después de instalarse. Si en algún momento no responde, ejecuta `ollama serve` en una terminal.
-
-### 3. Git (opcional, para clonar el repo)
-
-Descarga desde [git-scm.com](https://git-scm.com/).
-
----
-
-## 🚀 Instalación Paso a Paso
-
-Sigue estos pasos **en orden**. Cada uno es necesario para que el siguiente funcione.
-
-### Paso 1: Clonar o descargar el proyecto
-
-```bash
-git clone https://github.com/tu-usuario/ml-tutor.git
-cd ml-tutor
-```
-
-O descarga el ZIP desde GitHub y descomprímelo.
-
-### Paso 2: Crear un entorno virtual (recomendado)
-
-```bash
-# Crear el entorno
-python -m venv venv
-
-# Activarlo en Windows
-venv\Scripts\activate
-
-# Activarlo en Mac/Linux
-source venv/bin/activate
-```
-
-### Paso 3: Instalar dependencias
-
-```bash
-pip install -r requirements.txt
-```
-
-Esto instala: Streamlit, LangChain, ChromaDB, sentence-transformers, BeautifulSoup4 y todas sus dependencias.
-
-> **Primera vez:** La descarga de `sentence-transformers` puede tomar varios minutos (~500 MB).
-
-### Paso 4: Descargar el glosario de ML
-
-```bash
-python scraper.py
-```
-
-Esto descarga el Glosario de ML de Google y guarda **697 términos** en `data/glossary.json`.
-
-**Salida esperada:**
-```
-Descargando glosario desde https://developers.google.com/machine-learning/glossary...
-Guardados 697 términos en data/glossary.json
-```
-
-### Paso 5: Crear la base de datos vectorial
-
-```bash
-python setup_db.py
-```
-
-Esto genera los embeddings de cada término y los indexa en ChromaDB. La primera vez puede tardar **2–5 minutos** dependiendo de tu hardware.
-
-**Salida esperada:**
-```
-Cargados 697 términos del glosario.
-Inicializando ChromaDB...
-Creando embeddings (esto puede tomar unos minutos la primera vez)...
-  Procesados 697/697 términos...
-Base de datos vectorial creada en data/chroma_db
-Total de documentos indexados: 697
-
-Setup completado. Ahora puedes ejecutar: streamlit run app.py
-```
-
-### Paso 6: Lanzar la aplicación
-
-```bash
-streamlit run app.py
-```
-
-La app abrirá automáticamente en tu navegador en **http://localhost:8501**
-
-> Si no se abre automáticamente, cópiala y pégala en tu navegador.
-
----
-
-## 📱 Uso de la Aplicación
-
-### Pantalla de Inicio
-
-Al abrir la app verás tres opciones:
-
-- **🃏 Flashcards** → Modo de práctica con evaluación por IA
-- **💬 Pregunta Libre** → Chat directo con el tutor
-- **📊 Mi Progreso** → Dashboard con tus estadísticas
-
-### Modo Flashcards
-
-1. Aparece un término de ML en una tarjeta azul
-2. Escribe tu definición en el área de texto
-3. Presiona **"Evaluar respuesta"**
-4. El LLM compara tu respuesta con la definición oficial y retorna:
-   - **Puntuación** (0–100) con barra de progreso
-   - **Feedback** con color: verde (≥80), amarillo (60–79), rojo (<60)
-   - **Conceptos clave faltantes** para reforzar
-   - Botón para ver la **definición oficial** del glosario
-5. Presiona **"Siguiente tarjeta →"** para continuar
-
-### Modo Pregunta Libre
-
-1. Escribe cualquier pregunta sobre ML en el campo de chat
-2. El tutor busca contexto relevante en el glosario y responde
-3. El historial del chat se mantiene durante la sesión
+### Chat Libre
+- Preguntas abiertas sobre cualquier concepto de ML
+- RAG recupera k=4 chunks relevantes
+- Respuesta fundamentada con cita de fuente
+- Historial de conversación por sesión
 
 ### Mi Progreso
-
-- **Total de términos:** 697 (todos los del glosario)
-- **Practicados:** cuántos has intentado al menos una vez
-- **Dominados (≥80):** términos que ya manejas bien
-- **Promedio:** tu puntuación media general
-- Lista de términos que necesitan repaso (puntuación < 60)
-- Opción de **reiniciar progreso** para empezar de cero
+- Estadísticas: términos practicados, dominados (>=80), promedio de score
+- Lista de términos por revisar (score <60)
+- Opción de reiniciar historial
 
 ---
 
-## 🧠 Cómo Funciona el RAG
+## Instalación y uso
 
-**RAG (Retrieval-Augmented Generation)** es la técnica central del sistema. En lugar de depender únicamente del conocimiento del LLM, se recupera información relevante de la base de datos antes de generar una respuesta.
+### Prerequisitos
 
-### Proceso paso a paso:
+- Python 3.10+
+- [Ollama](https://ollama.com) instalado
 
-```
-1. Usuario escribe "¿Qué es gradient descent?"
-        │
-        ▼
-2. retrieve_context("gradient descent")
-   → ChromaDB convierte la query en un vector (embedding)
-   → Busca los 3-4 documentos más similares por similitud coseno
-   → Retorna los términos más relevantes del glosario
-        │
-        ▼
-3. Construir el prompt:
-   SYSTEM_PROMPT + contexto_recuperado + pregunta_usuario
-        │
-        ▼
-4. llm.invoke(prompt) → Ollama genera la respuesta
-   basándose en el contexto real del glosario, no en
-   conocimiento genérico del modelo
-        │
-        ▼
-5. Respuesta al usuario fundamentada en el glosario oficial
-```
-
-### Por qué RAG es superior al LLM solo:
-
-| Sin RAG | Con RAG |
-|---|---|
-| Respuestas genéricas del modelo | Respuestas basadas en el glosario oficial de Google |
-| Puede alucinar definiciones | Contexto verificable y preciso |
-| No actualizable | Se puede actualizar solo re-ejecutando scraper + setup |
-| Dependiente del entrenamiento del modelo | Fuente de verdad externa controlada |
-
----
-
-## 🛠 Stack Tecnológico
-
-| Componente | Tecnología | Versión | Propósito |
-|---|---|---|---|
-| **Frontend** | Streamlit | ≥1.31 | Interfaz web interactiva |
-| **LLM Local** | Ollama + llama3.2 | latest | Generación de texto y evaluación |
-| **Embeddings** | sentence-transformers | ≥3.0 | Vectorización multilingüe de textos |
-| **Modelo de Embeddings** | paraphrase-multilingual-MiniLM-L12-v2 | - | Embeddings semánticos en español |
-| **Vector DB** | ChromaDB | ≥0.5 | Almacenamiento y búsqueda semántica |
-| **LLM Framework** | LangChain + langchain-ollama | ≥0.2 | Orquestación de cadenas LLM |
-| **Web Scraping** | BeautifulSoup4 + requests | ≥4.12 | Extracción del glosario de Google |
-| **Persistencia** | JSON (local) | - | Progreso del estudiante |
-
----
-
-## 🔒 Privacidad y Ejecución Local
-
-Este proyecto fue diseñado con privacidad como principio fundamental:
-
-- **El LLM corre en tu máquina** via Ollama. Ninguna pregunta ni respuesta sale de tu PC.
-- **Los embeddings se generan localmente** con `sentence-transformers`. No se llama a ninguna API externa.
-- **ChromaDB es una base de datos local** almacenada en `data/chroma_db/`.
-- **El progreso del estudiante** se guarda en `data/progress.json`, solo en tu máquina.
-- La única conexión a internet es el scraping inicial del glosario público de Google (paso 4 del setup).
-
----
-
-## ⚠️ Solución de Problemas Comunes
-
-### Error: `httpx.ConnectError` al evaluar una respuesta
-**Causa:** Ollama no está corriendo.
-**Solución:**
 ```bash
+# Descargar el modelo LLM
+ollama pull llama3.2
+
+# Mantener Ollama activo (terminal separada)
 ollama serve
 ```
 
-### Error: `chromadb.errors.NotFoundError`
-**Causa:** Se regeneró la BD vectorial pero la app tiene el cache anterior.
-**Solución:** Reiniciar completamente el servidor de Streamlit (Ctrl+C y volver a ejecutar `streamlit run app.py`).
+### Pasos
 
-### Error: `ModuleNotFoundError`
-**Causa:** Las dependencias no están instaladas o el entorno virtual no está activado.
-**Solución:**
 ```bash
-# Activar entorno virtual primero
-venv\Scripts\activate       # Windows
-source venv/bin/activate    # Mac/Linux
+git clone https://github.com/<usuario>/ml-tutor.git
+cd ml-tutor
 
-# Luego instalar dependencias
 pip install -r requirements.txt
+
+python scraper.py      # Descarga el glosario (requiere internet)
+python setup_db.py     # Construye la base vectorial
+streamlit run app.py   # Lanza la aplicación
 ```
 
-### El glosario muestra 0 términos
-**Causa:** La estructura HTML de la página de Google cambió.
-**Solución:** Re-ejecutar el scraper. Si persiste, revisar `scraper.py` y actualizar el selector CSS.
+### Evaluación RAGAS (opcional)
 
-### La app tarda mucho en cargar la primera vez
-**Causa normal:** `sentence-transformers` descarga el modelo de embeddings (~120 MB) la primera vez. Luego queda en caché.
+```bash
+# Crear .env con tu API key de OpenAI (nunca se sube al repo)
+echo "OPENAI_API_KEY=sk-..." > .env
+
+pip install python-dotenv langchain-openai
+jupyter notebook evaluate_rag.ipynb
+```
 
 ---
 
-## 📄 Licencia
+## Evaluación RAGAS
 
-Proyecto académico desarrollado como parte del curso de IA. El glosario utilizado es propiedad de Google y está disponible públicamente en [developers.google.com/machine-learning/glossary](https://developers.google.com/machine-learning/glossary).
+### Parámetros
+
+| Parámetro | Valor |
+|-----------|-------|
+| Documento(s) | Glosario ML de Google — 697 términos |
+| Modelo de embeddings | `paraphrase-multilingual-MiniLM-L12-v2` (384 dims) |
+| chunk_size / overlap | Sin chunking / sin overlap |
+| k (chunks recuperados) | 3 |
+| LLM generador | `llama3.2` (Ollama, temperature=0.3) |
+| LLM juez (RAGAS) | `gpt-4o-mini` (OpenAI) |
+
+### Tipos de preguntas (10 casos)
+
+| Tipo | Descripción | N |
+|------|-------------|---|
+| A — Literal | Respuesta textual en el documento | 3 |
+| B — Vocabulario diferente | Paráfrasis que prueba los embeddings | 2 |
+| C — Combinar chunks | Requiere sintetizar varios términos | 2 |
+| D — Fuera del dominio | Detecta alucinaciones | 3 |
+
+### Resultados (ver `data/ragas_evaluation_results.csv`)
+
+| Tipo | Faithfulness | Answer Relevancy | Context Precision |
+|------|-------------|-----------------|------------------|
+| A — Literal | ~0.89 | ~0.83 | ~1.00 |
+| B — Vocabulario | ~0.76 | ~0.75 | ~0.83 |
+| C — Multi-chunk | ~0.66 | ~0.67 | ~0.67 |
+| D — Fuera del dominio | ~0.14 | ~0.20 | ~0.00 |
+
+### Análisis crítico
+
+- **Tipo A:** Alto desempeño — el embedding recupera el término exacto del glosario.
+- **Tipo B:** Buen desempeño semántico — el modelo multilingual generaliza bien con paráfrasis.
+- **Tipo C:** Caída moderada — k=3 no siempre captura todos los conceptos para síntesis.
+- **Tipo D:** Faithfulness muy baja — el LLM fabrica información sin respaldo documental. **Recomendación:** agregar un clasificador de relevancia del contexto antes de la generación.
+
+---
+
+## Estructura del repositorio
+
+```
+ml-tutor/
+├── app.py                  # Aplicación Streamlit (entry point)
+├── scraper.py              # Scraper del Glosario ML de Google
+├── setup_db.py             # Construye la base vectorial ChromaDB
+├── requirements.txt        # Dependencias Python
+├── evaluate_rag.ipynb      # Evaluación RAGAS (10 preguntas)
+│
+├── prompts/
+│   ├── system_prompts.py   # Prompts con etiquetas XML
+│   └── few_shot.py         # Ejemplos few-shot para flashcards
+│
+├── rag/
+│   └── chain.py            # MLTutorChain — nucleo del pipeline RAG
+│
+├── tutor/
+│   ├── flashcard.py        # Selección de términos (spaced repetition)
+│   └── progress.py         # Persistencia del progreso del estudiante
+│
+└── data/                   # Generado localmente — excluido del repo
+    ├── glossary.json
+    ├── chroma_db/
+    ├── progress.json
+    └── ragas_evaluation_results.csv
+```
+
+---
+
+## Seguridad y privacidad
+
+- Embeddings y LLM se ejecutan **100 % localmente**
+- Ningún dato del estudiante sale del dispositivo
+- La API key de OpenAI (solo para evaluación RAGAS) se carga desde `.env`, excluido del repo por `.gitignore`
